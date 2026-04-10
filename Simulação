@@ -1,0 +1,66 @@
+class Sensor:
+    def _init_(self, name, current_value):
+        self.name = name
+        self.current_value = current_value
+
+class VooSeguro_MCAS:
+    def _init_(self):
+        self.limite_discordancia = 5.0 # Diferença máxima tolerada em graus
+        self.limite_ativacao_mcas = 14.0 # Grau de inclinação perigosa
+        self.mcas_ativo = True
+
+    def sistema_de_votacao(self, aoa1, aoa2, aoa_sintetico):
+        sensores = [aoa1, aoa2, aoa_sintetico]
+        valores = [s.current_value for s in sensores]
+        
+        # Verifica consenso entre pelo menos dois sensores
+        consenso = []
+        for i in range(len(valores)):
+            for j in range(i + 1, len(valores)):
+                if abs(valores[i] - valores[j]) <= self.limite_discordancia:
+                    consenso.extend([valores[i], valores[j]])
+        
+        if not consenso:
+            self.desativar_mcas("FALHA CRÍTICA: Sem consenso entre os sensores.")
+            return None
+            
+        # Retorna a média dos sensores que estão em acordo
+        valor_validado = sum(set(consenso)) / len(set(consenso))
+        return valor_validado
+
+    def desativar_mcas(self, motivo):
+        self.mcas_ativo = False
+        print(f"[ALERTA PAINEL] AOA DISAGREE. MCAS DESATIVADO. CONTROLE MANUAL NECESSÁRIO.")
+        print(f"[LOG] Motivo: {motivo}")
+
+    def avaliar_condicao_voo(self, aoa1, aoa2, aoa_sintetico):
+        print("--- Iniciando Ciclo de Leitura ---")
+        aoa_confiavel = self.sistema_de_votacao(aoa1, aoa2, aoa_sintetico)
+        
+        if self.mcas_ativo and aoa_confiavel is not None:
+            if aoa_confiavel >= self.limite_ativacao_mcas:
+                print(f"[MCAS ATUANDO] Ajustando nariz para baixo. AoA Validado: {aoa_confiavel:.1f}")
+            else:
+                print(f"[STATUS] Voo normal. AoA Validado: {aoa_confiavel:.1f}")
+        print("----------------------------------\n")
+
+# --- SIMULAÇÃO ---
+sistema = VooSeguro_MCAS()
+
+# Cenário 1: Voo normal, todos os sensores concordam
+s1 = Sensor("Físico_Esq", 10.0)
+s2 = Sensor("Físico_Dir", 10.2)
+s3 = Sensor("Sintético", 10.1)
+sistema.avaliar_condicao_voo(s1, s2, s3)
+
+# Cenário 2: Falha de UM sensor físico 
+s1.current_value = 25.0 # Pássaro atingiu o sensor (Falha)
+s2.current_value = 11.0 # Leitura Real
+s3.current_value = 11.2 # Leitura Real (Software)
+sistema.avaliar_condicao_voo(s1, s2, s3)
+
+# Cenário 3: Falha catastrófica múltipla (Nenhum sensor concorda)
+s1.current_value = 25.0
+s2.current_value = -5.0
+s3.current_value = 12.0
+sistema.avaliar_condicao_voo(s1, s2, s3)
